@@ -146,13 +146,6 @@ Then:
 
 ---
 
-## 📸 Preview
-
-*Add a screenshot here for maximum impact*
-
-```md
-![Preview](screenshot.png)
-```
 
 ---
 
