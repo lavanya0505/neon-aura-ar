@@ -131,13 +131,6 @@ Real-time UI displaying:
 
 ---
 
-## 🌐 Live Demo
-
-👉 https://lavanya0505.github.io/neon-aura-ar/
-
-> ⚠️ Works best on Chrome with camera + microphone permissions enabled.
-
----
 
 ## ▶️ Run Locally
 
