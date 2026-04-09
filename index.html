@@ -1,0 +1,2402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEON AURA AR // ULTRA V3</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --bg-color: #020309;
+      --text-color: #ffffff;
+      --glass-bg: rgba(20, 25, 40, 0.34);
+      --glass-border: rgba(255, 255, 255, 0.16);
+      --glass-blur: blur(18px);
+      --accent: #00ffd5;
+      --warn: #ff7a00;
+      --danger: #ff3d7f;
+      --good: #6dff90;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: Inter, Arial, sans-serif;
+    }
+
+    body {
+      transform: translate(0, 0);
+      transition: transform 0.06s linear, filter 0.12s linear;
+    }
+
+    .video-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .input_video,
+    #bgCanvas,
+    #mainCanvas,
+    #fxCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
+    .input_video {
+      z-index: 0;
+      filter: brightness(0.4) contrast(1.25) saturate(1.2);
+    }
+
+    #bgCanvas { z-index: 1; pointer-events: none; }
+    #mainCanvas { z-index: 5; pointer-events: none; }
+    #fxCanvas { z-index: 6; pointer-events: none; }
+
+    #flashOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      pointer-events: none;
+      background: radial-gradient(circle at center, rgba(255,255,255,0.18), rgba(255,255,255,0) 60%);
+      opacity: 0;
+      transition: opacity 0.08s ease;
+      mix-blend-mode: screen;
+    }
+
+    #startOverlay,
+    #bootOverlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+      transition: opacity 0.35s ease;
+    }
+
+    #startOverlay {
+      background: radial-gradient(circle at center, rgba(20,30,60,0.35), rgba(0,0,0,0.92));
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    #bootOverlay {
+      z-index: 101;
+      background:
+        linear-gradient(rgba(0, 255, 213, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 213, 0.04) 1px, transparent 1px),
+        radial-gradient(circle at center, rgba(0,255,213,0.08), rgba(0,0,0,0.94));
+      background-size: 28px 28px, 28px 28px, cover;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #startOverlay.hidden,
+    #bootOverlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #startOverlay h1,
+    #bootOverlay h1 {
+      font-weight: 300;
+      letter-spacing: 6px;
+      margin-bottom: 18px;
+      font-size: clamp(2rem, 4vw, 4rem);
+      text-shadow: 0 0 30px rgba(0,255,213,0.35);
+    }
+
+    #startOverlay p,
+    #bootOverlay p {
+      color: #d0d0d0;
+      max-width: 780px;
+      line-height: 1.65;
+      margin-bottom: 32px;
+      font-size: 1rem;
+    }
+
+    .start-btn {
+      padding: 16px 36px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 999px;
+      color: white;
+      cursor: pointer;
+      font-weight: 800;
+      letter-spacing: 2px;
+      background: linear-gradient(45deg, #ff00cc, #3333ff, #00eaff);
+      box-shadow: 0 0 24px rgba(255, 0, 204, 0.45), 0 0 50px rgba(0, 234, 255, 0.15);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .start-btn:hover {
+      transform: scale(1.05);
+    }
+
+    #bootPanel {
+      width: min(760px, 92vw);
+      padding: 28px;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.14);
+      background: rgba(0, 8, 18, 0.55);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 0 50px rgba(0,255,213,0.12);
+    }
+
+    #bootLog {
+      text-align: left;
+      min-height: 180px;
+      max-height: 280px;
+      overflow: hidden;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.92);
+      margin-bottom: 18px;
+      white-space: pre-line;
+    }
+
+    #bootBarWrap {
+      height: 10px;
+      width: 100%;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.08);
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    #bootBar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00ffd5, #00aaff, #ffffff);
+      box-shadow: 0 0 20px rgba(0,255,213,0.35);
+      transition: width 0.2s ease;
+    }
+
+    #bootPercent {
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #9ef7e8;
+    }
+
+    #hud {
+      position: fixed;
+      top: 18px;
+      left: 18px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: opacity 0.35s ease;
+    }
+
+    .hidden-ui {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .panel {
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      padding: 14px 18px;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.42);
+      min-width: 260px;
+    }
+
+    .stat {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 8px;
+      color: rgba(255,255,255,0.86);
+      font-size: 0.96rem;
+    }
+
+    .stat:last-child {
+      margin-bottom: 0;
+    }
+
+    .val {
+      color: var(--accent);
+      font-weight: 800;
+      text-align: right;
+    }
+
+    #themes {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      max-width: 96vw;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      padding: 10px;
+      transition: opacity 0.35s ease;
+    }
+
+    .theme-btn {
+      background: transparent;
+      color: white;
+      border: 1px solid transparent;
+      padding: 9px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: 0.25s ease;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .theme-btn.active {
+      background: rgba(255,255,255,0.15);
+      border-color: rgba(255,255,255,0.25);
+      box-shadow: 0 0 14px rgba(255,255,255,0.12) inset;
+    }
+
+    #tips {
+      position: fixed;
+      right: 18px;
+      top: 18px;
+      z-index: 10;
+      max-width: 360px;
+    }
+
+    #tips .panel {
+      line-height: 1.6;
+      font-size: 0.92rem;
+      color: rgba(255,255,255,0.88);
+    }
+
+    #tips strong {
+      color: white;
+    }
+
+    #centerLabel {
+      position: fixed;
+      left: 50%;
+      top: 12%;
+      transform: translateX(-50%);
+      z-index: 15;
+      padding: 12px 18px;
+      border-radius: 999px;
+      background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(12px);
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: white;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      box-shadow: 0 0 30px rgba(255,255,255,0.08);
+    }
+
+    #centerLabel.show {
+      opacity: 1;
+      transform: translateX(-50%) scale(1.04);
+    }
+
+    #crosshair {
+      position: fixed;
+      right: 22px;
+      bottom: 100px;
+      z-index: 10;
+      width: 118px;
+      height: 118px;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,0.18);
+      display: grid;
+      place-items: center;
+      backdrop-filter: blur(12px);
+      background: rgba(0,0,0,0.18);
+      box-shadow: 0 0 30px rgba(255,255,255,0.05);
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: "";
+      position: absolute;
+      background: rgba(255,255,255,0.35);
+    }
+
+    #crosshair::before {
+      width: 56px;
+      height: 1px;
+    }
+
+    #crosshair::after {
+      width: 1px;
+      height: 56px;
+    }
+
+    #crosshairText {
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      color: rgba(255,255,255,0.82);
+      text-align: center;
+      width: 76px;
+      line-height: 1.2;
+      white-space: pre-line;
+    }
+
+    #bossBarWrap {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(680px, 86vw);
+      z-index: 12;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+    }
+
+    #bossBarWrap.active {
+      opacity: 1;
+    }
+
+    #bossName {
+      text-align: center;
+      font-weight: 800;
+      letter-spacing: 3px;
+      margin-bottom: 8px;
+      color: #ffd8ef;
+      text-shadow: 0 0 20px rgba(255, 61, 127, 0.4);
+    }
+
+    #bossBarBg {
+      height: 14px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    #bossBar {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, #ff3d7f, #ff7a00, #ffd400);
+      box-shadow: 0 0 20px rgba(255,61,127,0.3);
+      transition: width 0.15s ease;
+    }
+
+    @media (max-width: 768px) {
+      #hud {
+        top: 10px;
+        left: 10px;
+      }
+
+      #tips,
+      #crosshair {
+        display: none;
+      }
+
+      #themes {
+        bottom: 10px;
+      }
+
+      .panel {
+        min-width: 185px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="startOverlay">
+    <h1>NEON AURA AR // ULTRA V3</h1>
+    <p>
+      Full boot animation, 10 modes, boss fight mode, voice commands, and starter air-symbol recognition.
+      Pinch to fire. Hold pinch to charge. Swipe to change spell. Draw symbols in air. Speak commands like “boss mode”, “shield”, or “galaxy mode”.
+    </p>
+    <button class="start-btn" id="startBtn">INITIATE BOOT</button>
+  </div>
+
+  <div id="bootOverlay" class="hidden">
+    <div id="bootPanel">
+      <h1>VISOR BOOT</h1>
+      <div id="bootLog"></div>
+      <div id="bootBarWrap"><div id="bootBar"></div></div>
+      <div id="bootPercent">0%</div>
+    </div>
+  </div>
+
+  <div class="video-container">
+    <video class="input_video" autoplay playsinline></video>
+    <canvas id="bgCanvas"></canvas>
+    <canvas id="mainCanvas"></canvas>
+    <canvas id="fxCanvas"></canvas>
+  </div>
+
+  <div id="flashOverlay"></div>
+  <div id="centerLabel"></div>
+
+  <div id="bossBarWrap">
+    <div id="bossName">ARC SENTINEL PRIME</div>
+    <div id="bossBarBg"><div id="bossBar"></div></div>
+  </div>
+
+  <div id="hud" class="hidden-ui">
+    <div class="panel">
+      <div class="stat">Hands <span class="val" id="ui-hands">0</span></div>
+      <div class="stat">FPS <span class="val" id="ui-fps">0</span></div>
+      <div class="stat">Power <span class="val" id="ui-power">0%</span></div>
+      <div class="stat">Charge <span class="val" id="ui-charge">0%</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="stat">Gesture <span class="val" id="ui-gesture">None</span></div>
+      <div class="stat">Mode <span class="val" id="ui-mode">Idle</span></div>
+      <div class="stat">Spell <span class="val" id="ui-spell">Pulse</span></div>
+      <div class="stat">Target <span class="val" id="ui-target">None</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="stat">Score <span class="val" id="ui-score">0</span></div>
+      <div class="stat">Combo <span class="val" id="ui-combo">x0</span></div>
+      <div class="stat">Drones <span class="val" id="ui-drones">0</span></div>
+      <div class="stat">Shield <span class="val" id="ui-shield">OFF</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="stat">Voice <span class="val" id="ui-voice">OFF</span></div>
+      <div class="stat">Symbol <span class="val" id="ui-symbol">None</span></div>
+      <div class="stat">Boss <span class="val" id="ui-boss">OFF</span></div>
+      <div class="stat">Boss HP <span class="val" id="ui-boss-hp">0%</span></div>
+    </div>
+  </div>
+
+  <div id="tips" class="hidden-ui">
+    <div class="panel">
+      <strong>Controls:</strong><br />
+      • Pinch = fire spell<br />
+      • Hold pinch = charge shot<br />
+      • Swipe left/right = switch spell<br />
+      • Draw circle / line / zigzag / X / triangle in air<br />
+      • Voice: “boss mode”, “shield”, “lightning”, “galaxy mode”, “boot”, “clear screen”<br />
+      • Open hand = bloom<br />
+      • Fist = reset blast
+    </div>
+  </div>
+
+  <div id="themes" class="hidden-ui"></div>
+
+  <div id="crosshair">
+    <div id="crosshairText">NO TARGET</div>
+  </div>
+
+  <script>
+    // ==============================
+    // DOM
+    // ==============================
+    const videoElement = document.querySelector(".input_video");
+    const bgCanvas = document.getElementById("bgCanvas");
+    const mainCanvas = document.getElementById("mainCanvas");
+    const fxCanvas = document.getElementById("fxCanvas");
+
+    const bgCtx = bgCanvas.getContext("2d");
+    const ctx = mainCanvas.getContext("2d");
+    const fxCtx = fxCanvas.getContext("2d");
+
+    const uiHands = document.getElementById("ui-hands");
+    const uiFps = document.getElementById("ui-fps");
+    const uiGesture = document.getElementById("ui-gesture");
+    const uiMode = document.getElementById("ui-mode");
+    const uiPower = document.getElementById("ui-power");
+    const uiCharge = document.getElementById("ui-charge");
+    const uiSpell = document.getElementById("ui-spell");
+    const uiTarget = document.getElementById("ui-target");
+    const uiScore = document.getElementById("ui-score");
+    const uiCombo = document.getElementById("ui-combo");
+    const uiDrones = document.getElementById("ui-drones");
+    const uiShield = document.getElementById("ui-shield");
+    const uiVoice = document.getElementById("ui-voice");
+    const uiSymbol = document.getElementById("ui-symbol");
+    const uiBoss = document.getElementById("ui-boss");
+    const uiBossHp = document.getElementById("ui-boss-hp");
+
+    const startOverlay = document.getElementById("startOverlay");
+    const bootOverlay = document.getElementById("bootOverlay");
+    const bootLog = document.getElementById("bootLog");
+    const bootBar = document.getElementById("bootBar");
+    const bootPercent = document.getElementById("bootPercent");
+
+    const hud = document.getElementById("hud");
+    const themesWrap = document.getElementById("themes");
+    const tips = document.getElementById("tips");
+    const flashOverlay = document.getElementById("flashOverlay");
+    const centerLabel = document.getElementById("centerLabel");
+    const crosshairText = document.getElementById("crosshairText");
+
+    const bossBarWrap = document.getElementById("bossBarWrap");
+    const bossBar = document.getElementById("bossBar");
+
+    // ==============================
+    // STATE
+    // ==============================
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+
+    let currentHands = [];
+    let previousHands = [];
+    let handVelocity = 0;
+    let time = 0;
+    let lastTimestamp = performance.now();
+    let frames = 0;
+    let lastFpsUpdate = performance.now();
+
+    let currentMode = "Iron Reactor";
+    let currentTheme = "Iron Reactor";
+    let shakeAmount = 0;
+    let energyPower = 0;
+    let lastFusionDist = 1;
+
+    let particles = [];
+    let ripples = [];
+    let trails = [];
+    let stars = [];
+    let shards = [];
+    let orbiters = [];
+    let rings = [];
+    let projectiles = [];
+    let drones = [];
+    let explosions = [];
+    let pointerPaths = [[], []];
+    let symbolStroke = [];
+    let symbolDrawingEnabled = true;
+
+    let score = 0;
+    let combo = 0;
+    let lastHitTime = 0;
+
+    const FINGER_TIPS = [4, 8, 12, 16, 20];
+    let lastPinchState = [false, false];
+    let pinchStartTime = [0, 0];
+    let chargePct = [0, 0];
+    let lastOpenBurstTime = 0;
+    let lastFistTime = 0;
+    let lastSwipeTime = 0;
+    let shieldActive = false;
+
+    const spells = ["Pulse", "Lightning", "Nova", "Shield", "Beam"];
+    let spellIndex = 0;
+
+    let bossMode = false;
+    let boss = null;
+    let bossAttackCooldown = 0;
+    let bossProjectiles = [];
+
+    let voiceEnabled = false;
+    let recognition = null;
+
+    // ==============================
+    // MODES
+    // ==============================
+    const MODES = [
+      { name: "Iron Reactor", accent: "#00d8ff", hueBase: 195, sat: 100, light: 58, boss: "ARC SENTINEL PRIME" },
+      { name: "Mystic", accent: "#ff9f43", hueBase: 30, sat: 100, light: 58, boss: "RUNE TITAN" },
+      { name: "Cyber DJ", accent: "#ff2ad4", hueBase: 310, sat: 100, light: 58, boss: "BASS OVERLORD" },
+      { name: "Storm", accent: "#8ab4ff", hueBase: 220, sat: 100, light: 60, boss: "THUNDER CORE" },
+      { name: "Void", accent: "#b48dff", hueBase: 270, sat: 100, light: 63, boss: "VOID EYE" },
+      { name: "Plasma", accent: "#00fff2", hueBase: 178, sat: 100, light: 58, boss: "PLASMA WARDEN" },
+      { name: "Lava Titan", accent: "#ff5a36", hueBase: 12, sat: 100, light: 56, boss: "MAGMA COLOSSUS" },
+      { name: "Ocean Pulse", accent: "#29c7ff", hueBase: 200, sat: 100, light: 58, boss: "ABYSS CORE" },
+      { name: "Galaxy", accent: "#9c7dff", hueBase: 255, sat: 100, light: 64, boss: "NEBULA EMPEROR" },
+      { name: "Boss Battle", accent: "#ff3d7f", hueBase: 340, sat: 100, light: 58, boss: "ARC SENTINEL PRIME" }
+    ];
+
+    function getModeConfig(name = currentMode) {
+      return MODES.find(m => m.name === name) || MODES[0];
+    }
+
+    function modeColor(t, index = 0, total = 1, boost = 0, modeName = currentMode) {
+      const cfg = getModeConfig(modeName);
+      let hue = cfg.hueBase + Math.sin(t * 2 + index) * 20 + index * (360 / Math.max(total, 1)) * 0.15;
+      let light = Math.min(84, cfg.light + boost);
+      return `hsl(${hue}, ${cfg.sat}%, ${light}%)`;
+    }
+
+    function renderModeButtons() {
+      themesWrap.innerHTML = "";
+      MODES.forEach(mode => {
+        const btn = document.createElement("button");
+        btn.className = "theme-btn" + (mode.name === currentMode ? " active" : "");
+        btn.textContent = mode.name;
+        btn.dataset.mode = mode.name;
+        btn.onclick = () => setMode(mode.name);
+        themesWrap.appendChild(btn);
+      });
+    }
+
+    function setMode(name) {
+      currentMode = name;
+      currentTheme = name;
+      const cfg = getModeConfig(name);
+      document.documentElement.style.setProperty("--accent", cfg.accent);
+      renderModeButtons();
+      aiMessage(`${name.toUpperCase()} MODE`);
+      if (name === "Boss Battle") {
+        enableBossMode();
+      }
+    }
+
+    // ==============================
+    // UTIL
+    // ==============================
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+    function getDist(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+    function mapToCanvas(point) { return { x: point.x * width, y: point.y * height }; }
+
+    function resize() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      bgCanvas.width = width;
+      bgCanvas.height = height;
+      mainCanvas.width = width;
+      mainCanvas.height = height;
+      fxCanvas.width = width;
+      fxCanvas.height = height;
+      makeStars();
+    }
+    window.addEventListener("resize", resize);
+
+    function showCenterLabel(text) {
+      centerLabel.textContent = text;
+      centerLabel.classList.add("show");
+      clearTimeout(showCenterLabel._timeout);
+      showCenterLabel._timeout = setTimeout(() => {
+        centerLabel.classList.remove("show");
+      }, 850);
+    }
+
+    function aiMessage(text) {
+      showCenterLabel(text);
+    }
+
+    function screenFlash(amount = 1) {
+      flashOverlay.style.opacity = String(clamp(amount, 0, 1) * 0.9);
+      clearTimeout(screenFlash._t);
+      screenFlash._t = setTimeout(() => {
+        flashOverlay.style.opacity = "0";
+      }, 70);
+    }
+
+    function kickShake(amount = 8) {
+      shakeAmount = Math.max(shakeAmount, amount);
+    }
+
+    // ==============================
+    // BOOT SEQUENCE
+    // ==============================
+    const BOOT_LINES = [
+      "Initializing visor interface...",
+      "Calibrating camera stream...",
+      "Checking hardware acceleration...",
+      "Loading gesture engine...",
+      "Loading audio synthesis matrix...",
+      "Targeting matrix online...",
+      "Spell engine linked...",
+      "Voice command module ready...",
+      "Boss combat simulator ready...",
+      "System stability: nominal.",
+      "All systems online."
+    ];
+
+    async function runBootSequence() {
+      bootOverlay.classList.remove("hidden");
+      bootOverlay.style.opacity = "1";
+      bootLog.textContent = "";
+      bootBar.style.width = "0%";
+      bootPercent.textContent = "0%";
+
+      for (let i = 0; i < BOOT_LINES.length; i++) {
+        bootLog.textContent += BOOT_LINES[i] + "\n";
+        const pct = Math.round(((i + 1) / BOOT_LINES.length) * 100);
+        bootBar.style.width = pct + "%";
+        bootPercent.textContent = pct + "%";
+        await new Promise(r => setTimeout(r, 280));
+      }
+
+      await new Promise(r => setTimeout(r, 350));
+      bootOverlay.classList.add("hidden");
+      bootOverlay.style.display = "none";
+    }
+
+    // ==============================
+    // AUDIO
+    // ==============================
+    let audioCtx = null;
+    let masterGain = null;
+    let ambientOsc = null;
+    let ambientGain = null;
+    let leftOsc = null;
+    let rightOsc = null;
+    let leftGain = null;
+    let rightGain = null;
+    let leftPan = null;
+    let rightPan = null;
+    let filterNode = null;
+    let delayNode = null;
+    let feedbackGain = null;
+    let convolver = null;
+    let lfo = null;
+    let lfoGain = null;
+
+    function createImpulseResponse(context, duration = 1.5, decay = 2.5) {
+      const sampleRate = context.sampleRate;
+      const length = sampleRate * duration;
+      const impulse = context.createBuffer(2, length, sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          const n = i / length;
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - n, decay);
+        }
+      }
+      return impulse;
+    }
+
+    function initAudio() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.44;
+
+        filterNode = audioCtx.createBiquadFilter();
+        filterNode.type = "lowpass";
+        filterNode.frequency.value = 1200;
+        filterNode.Q.value = 10;
+
+        delayNode = audioCtx.createDelay(1.0);
+        delayNode.delayTime.value = 0.18;
+
+        feedbackGain = audioCtx.createGain();
+        feedbackGain.gain.value = 0.28;
+
+        convolver = audioCtx.createConvolver();
+        convolver.buffer = createImpulseResponse(audioCtx, 1.3, 2.6);
+
+        ambientOsc = audioCtx.createOscillator();
+        ambientGain = audioCtx.createGain();
+        ambientOsc.type = "sine";
+        ambientOsc.frequency.value = 72;
+        ambientGain.gain.value = 0.02;
+
+        leftOsc = audioCtx.createOscillator();
+        rightOsc = audioCtx.createOscillator();
+        leftOsc.type = "triangle";
+        rightOsc.type = "sawtooth";
+        leftOsc.frequency.value = 140;
+        rightOsc.frequency.value = 220;
+
+        leftGain = audioCtx.createGain();
+        rightGain = audioCtx.createGain();
+        leftGain.gain.value = 0;
+        rightGain.gain.value = 0;
+
+        leftPan = audioCtx.createStereoPanner();
+        rightPan = audioCtx.createStereoPanner();
+
+        lfo = audioCtx.createOscillator();
+        lfoGain = audioCtx.createGain();
+        lfo.type = "sine";
+        lfo.frequency.value = 0.18;
+        lfoGain.gain.value = 120;
+
+        lfo.connect(lfoGain);
+        lfoGain.connect(filterNode.frequency);
+
+        delayNode.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+
+        ambientOsc.connect(ambientGain);
+        ambientGain.connect(filterNode);
+
+        leftOsc.connect(leftGain);
+        rightOsc.connect(rightGain);
+        leftGain.connect(leftPan);
+        rightGain.connect(rightPan);
+        leftPan.connect(filterNode);
+        rightPan.connect(filterNode);
+
+        filterNode.connect(masterGain);
+        filterNode.connect(delayNode);
+        filterNode.connect(convolver);
+        delayNode.connect(masterGain);
+        convolver.connect(masterGain);
+        masterGain.connect(audioCtx.destination);
+
+        ambientOsc.start();
+        leftOsc.start();
+        rightOsc.start();
+        lfo.start();
+      } catch (err) {
+        console.error("Audio init failed:", err);
+      }
+    }
+
+    function updateAudio(hands) {
+      if (!audioCtx) return;
+      const velocityBoost = Math.min(0.1, handVelocity * 0.9);
+      const chargeBoost = Math.max(chargePct[0], chargePct[1]) / 100;
+
+      if (!hands || hands.length === 0) {
+        leftGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.08);
+        rightGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.08);
+        ambientGain.gain.setTargetAtTime(0.012, audioCtx.currentTime, 0.1);
+        filterNode.frequency.setTargetAtTime(800, audioCtx.currentTime, 0.1);
+        delayNode.delayTime.setTargetAtTime(0.12, audioCtx.currentTime, 0.1);
+        uiMode.innerText = "Idle";
+        return;
+      }
+
+      ambientGain.gain.setTargetAtTime(0.025 + velocityBoost * 0.5 + chargeBoost * 0.05, audioCtx.currentTime, 0.1);
+
+      if (hands[0]) {
+        const x = hands[0][8].x;
+        const y = hands[0][8].y;
+        leftOsc.frequency.setTargetAtTime(110 + (1 - y) * 320 + handVelocity * 1200 + chargePct[0] * 3, audioCtx.currentTime, 0.08);
+        leftGain.gain.setTargetAtTime(0.08 + velocityBoost + chargeBoost * 0.1, audioCtx.currentTime, 0.08);
+        leftPan.pan.setTargetAtTime(x * 2 - 1, audioCtx.currentTime, 0.08);
+      } else {
+        leftGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.08);
+      }
+
+      if (hands[1]) {
+        const x = hands[1][8].x;
+        const y = hands[1][8].y;
+        rightOsc.frequency.setTargetAtTime(170 + (1 - y) * 520 + handVelocity * 1400 + chargePct[1] * 3, audioCtx.currentTime, 0.08);
+        rightGain.gain.setTargetAtTime(0.08 + velocityBoost + chargeBoost * 0.1, audioCtx.currentTime, 0.08);
+        rightPan.pan.setTargetAtTime(x * 2 - 1, audioCtx.currentTime, 0.08);
+      } else {
+        rightGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.08);
+      }
+
+      if (hands.length >= 2) {
+        const p1 = hands[0][8];
+        const p2 = hands[1][8];
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        filterNode.frequency.setTargetAtTime(600 + (1 - Math.min(dist, 1)) * 3200 + handVelocity * 1000 + chargeBoost * 700, audioCtx.currentTime, 0.08);
+        delayNode.delayTime.setTargetAtTime(0.1 + (1 - Math.min(dist, 1)) * 0.25, audioCtx.currentTime, 0.08);
+        uiMode.innerText = dist < 0.18 ? "Fusion" : "Dual";
+      } else {
+        filterNode.frequency.setTargetAtTime(1600 + handVelocity * 1000 + chargeBoost * 500, audioCtx.currentTime, 0.08);
+        delayNode.delayTime.setTargetAtTime(0.14, audioCtx.currentTime, 0.08);
+        uiMode.innerText = "Solo";
+      }
+    }
+
+    function triggerZap() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      const pan = audioCtx.createStereoPanner();
+      osc.type = "sawtooth";
+      osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(70, audioCtx.currentTime + 0.14);
+      gain.gain.setValueAtTime(0.22, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.14);
+      pan.pan.value = Math.random() * 2 - 1;
+      osc.connect(gain); gain.connect(pan); pan.connect(masterGain);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.15);
+    }
+
+    function triggerBass(power = 1) {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(180 + power * 30, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(35, audioCtx.currentTime + 0.32);
+      gain.gain.setValueAtTime(0.25 + power * 0.18, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.32);
+      osc.connect(gain); gain.connect(masterGain);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.34);
+    }
+
+    function triggerBoom() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(28, audioCtx.currentTime + 0.28);
+      gain.gain.setValueAtTime(0.24, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.28);
+      osc.connect(gain); gain.connect(masterGain);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.3);
+    }
+
+    function triggerShimmer() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "triangle";
+      osc.frequency.setValueAtTime(700, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1500, audioCtx.currentTime + 0.16);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.18);
+      osc.connect(gain); gain.connect(masterGain);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+    }
+
+    function triggerHitTone() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(420, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.connect(gain); gain.connect(masterGain);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.13);
+    }
+
+    // ==============================
+    // EFFECTS
+    // ==============================
+    function createParticles(pos, color, count = 4, speed = 8) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: pos.x, y: pos.y,
+          vx: (Math.random() - 0.5) * speed,
+          vy: (Math.random() - 0.5) * speed,
+          life: 1,
+          color,
+          size: Math.random() * 4 + 1.5
+        });
+      }
+    }
+
+    function createShards(pos, color, count = 8) {
+      for (let i = 0; i < count; i++) {
+        shards.push({
+          x: pos.x, y: pos.y,
+          angle: Math.random() * Math.PI * 2,
+          speed: Math.random() * 7 + 4,
+          len: Math.random() * 12 + 8,
+          life: 1,
+          color
+        });
+      }
+    }
+
+    function createShockwave(pos, color, maxRadius = 180) {
+      ripples.push({
+        x: pos.x, y: pos.y,
+        radius: 0, maxRadius, life: 1, color
+      });
+    }
+
+    function createTrail(pos, color) {
+      trails.push({
+        x: pos.x, y: pos.y,
+        life: 0.95, color,
+        size: 12 + Math.random() * 10
+      });
+    }
+
+    function createEnergyRing(pos, color, radius = 40) {
+      rings.push({
+        x: pos.x, y: pos.y,
+        radius, life: 1, color
+      });
+    }
+
+    function createExplosion(x, y, color) {
+      explosions.push({ x, y, color, life: 1, radius: 10 });
+      createShockwave({ x, y }, color, 120);
+      createShards({ x, y }, "#ffffff", 12);
+      createParticles({ x, y }, color, 18, 10);
+    }
+
+    // ==============================
+    // WORLD
+    // ==============================
+    function makeStars() {
+      stars = [];
+      const count = Math.floor((width * height) / 12000);
+      for (let i = 0; i < count; i++) {
+        stars.push({
+          x: Math.random() * width,
+          y: Math.random() * height,
+          size: Math.random() * 2 + 0.2,
+          speed: Math.random() * 0.6 + 0.15,
+          alpha: Math.random() * 0.6 + 0.2
+        });
+      }
+    }
+
+    function spawnOrbiters() {
+      orbiters = [];
+      for (let i = 0; i < 16; i++) {
+        orbiters.push({
+          angle: (Math.PI * 2 * i) / 16,
+          radius: 120 + Math.random() * 160,
+          speed: 0.2 + Math.random() * 0.4,
+          size: 1 + Math.random() * 2
+        });
+      }
+    }
+
+    function spawnDrones(count = 5) {
+      while (drones.length < count) {
+        const r = 20 + Math.random() * 16;
+        drones.push({
+          x: Math.random() * width * 0.8 + width * 0.1,
+          y: Math.random() * height * 0.55 + height * 0.12,
+          vx: (Math.random() - 0.5) * 1.4,
+          vy: (Math.random() - 0.5) * 1.2,
+          radius: r,
+          hp: 2,
+          pulse: Math.random() * Math.PI * 2,
+          id: Math.random().toString(36).slice(2, 9)
+        });
+      }
+    }
+
+    function addScore(points) {
+      const now = performance.now();
+      combo = now - lastHitTime < 1300 ? combo + 1 : 1;
+      lastHitTime = now;
+      score += points * combo;
+    }
+
+    function getActiveSpell() {
+      return spells[spellIndex];
+    }
+
+    function cycleSpell(direction = 1) {
+      spellIndex = (spellIndex + direction + spells.length) % spells.length;
+      uiSpell.innerText = getActiveSpell();
+      aiMessage(`${getActiveSpell().toUpperCase()} READY`);
+    }
+
+    function updatePointerPath(hand, handIndex) {
+      const pt = mapToCanvas(hand[8]);
+      pointerPaths[handIndex].push({ x: pt.x, y: pt.y, t: performance.now() });
+      if (pointerPaths[handIndex].length > 20) pointerPaths[handIndex].shift();
+    }
+
+    function detectSwipe(handIndex) {
+      const path = pointerPaths[handIndex];
+      if (path.length < 8) return;
+      const now = performance.now();
+      if (now - lastSwipeTime < 700) return;
+
+      const first = path[0];
+      const last = path[path.length - 1];
+      const dx = last.x - first.x;
+      const dy = Math.abs(last.y - first.y);
+
+      if (Math.abs(dx) > 150 && dy < 110) {
+        lastSwipeTime = now;
+        cycleSpell(dx > 0 ? 1 : -1);
+      }
+    }
+
+    function getNearestDrone(point) {
+      const candidates = [...drones];
+      if (bossMode && boss) candidates.push(boss);
+      if (!candidates.length) return null;
+      let best = null, bestDist = Infinity;
+      for (const d of candidates) {
+        const dist = Math.hypot(point.x - d.x, point.y - d.y);
+        if (dist < bestDist) { bestDist = dist; best = d; }
+      }
+      return best;
+    }
+
+    // ==============================
+    // SYMBOL RECOGNITION
+    // ==============================
+    function startSymbolStroke(pos) {
+      symbolStroke = [{ x: pos.x, y: pos.y, t: performance.now() }];
+    }
+
+    function updateSymbolStroke(pos) {
+      if (!symbolDrawingEnabled) return;
+      symbolStroke.push({ x: pos.x, y: pos.y, t: performance.now() });
+      if (symbolStroke.length > 90) symbolStroke.shift();
+    }
+
+    function endSymbolStroke() {
+      if (symbolStroke.length < 10) {
+        symbolStroke = [];
+        return;
+      }
+      const result = recognizeSymbol(symbolStroke);
+      uiSymbol.innerText = result;
+      if (result !== "None") {
+        aiMessage(`SYMBOL: ${result.toUpperCase()}`);
+        runSymbolAction(result);
+      }
+      symbolStroke = [];
+    }
+
+    function recognizeSymbol(points) {
+      if (points.length < 10) return "None";
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let pathLen = 0;
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+        if (i > 0) pathLen += Math.hypot(p.x - points[i - 1].x, p.y - points[i - 1].y);
+      }
+      const w = maxX - minX;
+      const h = maxY - minY;
+      const start = points[0];
+      const end = points[points.length - 1];
+      const closure = Math.hypot(end.x - start.x, end.y - start.y);
+
+      let turns = 0;
+      for (let i = 2; i < points.length; i++) {
+        const a = Math.atan2(points[i - 1].y - points[i - 2].y, points[i - 1].x - points[i - 2].x);
+        const b = Math.atan2(points[i].y - points[i - 1].y, points[i].x - points[i - 1].x);
+        let diff = Math.abs(b - a);
+        if (diff > Math.PI) diff = Math.PI * 2 - diff;
+        if (diff > 0.7) turns++;
+      }
+
+      if (closure < Math.min(w, h) * 0.5 && pathLen > Math.max(w, h) * 2.2) {
+        return "Circle";
+      }
+
+      if (w > 180 && h < 80) return "Line";
+      if (turns > 10 && w > 100 && h > 60) return "Zigzag";
+      if (turns >= 3 && turns <= 7 && w > 80 && h > 80 && closure < Math.max(w, h) * 0.5) return "Triangle";
+
+      // X detection: crossing diagonals approximation
+      const mid = points[Math.floor(points.length / 2)];
+      const startSlope = (mid.y - start.y) / ((mid.x - start.x) || 1);
+      const endSlope = (end.y - mid.y) / ((end.x - mid.x) || 1);
+      if (w > 80 && h > 80 && startSlope * endSlope < -0.5) {
+        return "X";
+      }
+
+      return "None";
+    }
+
+    function runSymbolAction(symbol) {
+      const center = currentHands[0] ? mapToCanvas(currentHands[0][8]) : { x: width / 2, y: height / 2 };
+
+      if (symbol === "Circle") {
+        createShockwave(center, modeColor(time, 0, 1, 14), 280);
+        createEnergyRing(center, "#ffffff", 20);
+        createEnergyRing(center, modeColor(time, 1, 5, 12), 36);
+        triggerShimmer();
+      } else if (symbol === "Line") {
+        spellIndex = spells.indexOf("Beam");
+        uiSpell.innerText = getActiveSpell();
+        triggerZap();
+      } else if (symbol === "Zigzag") {
+        spellIndex = spells.indexOf("Lightning");
+        uiSpell.innerText = getActiveSpell();
+        triggerZap();
+        triggerShimmer();
+      } else if (symbol === "Triangle") {
+        shieldActive = true;
+        uiShield.innerText = "ON";
+        createShockwave(center, modeColor(time, 1, 5, 10), 220);
+        setTimeout(() => {
+          shieldActive = false;
+          uiShield.innerText = "OFF";
+        }, 1800);
+      } else if (symbol === "X") {
+        particles = [];
+        trails = [];
+        createShockwave(center, "rgba(255,80,120,1)", 320);
+        triggerBoom();
+      }
+    }
+
+    // ==============================
+    // BOSS
+    // ==============================
+    function enableBossMode() {
+      bossMode = true;
+      uiBoss.innerText = "ON";
+      bossBarWrap.classList.add("active");
+      const cfg = getModeConfig(currentMode === "Boss Battle" ? "Boss Battle" : currentMode);
+      document.getElementById("bossName").textContent = cfg.boss;
+      boss = {
+        x: width * 0.5,
+        y: height * 0.28,
+        vx: 2.2,
+        vy: 1.4,
+        radius: 58,
+        hp: 100,
+        maxHp: 100,
+        phase: 1,
+        pulse: 0
+      };
+      aiMessage("BOSS ENCOUNTER");
+    }
+
+    function disableBossMode() {
+      bossMode = false;
+      boss = null;
+      bossProjectiles = [];
+      uiBoss.innerText = "OFF";
+      uiBossHp.innerText = "0%";
+      bossBarWrap.classList.remove("active");
+    }
+
+    function updateBoss(dt) {
+      if (!bossMode || !boss) return;
+
+      boss.pulse += dt * 4;
+      boss.x += boss.vx;
+      boss.y += boss.vy;
+
+      if (boss.x < boss.radius || boss.x > width - boss.radius) boss.vx *= -1;
+      if (boss.y < boss.radius || boss.y > height * 0.5) boss.vy *= -1;
+
+      if (boss.hp < 66 && boss.phase === 1) {
+        boss.phase = 2;
+        aiMessage("BOSS PHASE 2");
+      }
+      if (boss.hp < 33 && boss.phase === 2) {
+        boss.phase = 3;
+        aiMessage("BOSS PHASE 3");
+      }
+
+      bossAttackCooldown -= dt;
+      if (bossAttackCooldown <= 0) {
+        bossAttackCooldown = Math.max(0.5, 1.6 - boss.phase * 0.25);
+        const target = currentHands[0] ? mapToCanvas(currentHands[0][8]) : { x: width / 2, y: height };
+        let dx = target.x - boss.x;
+        let dy = target.y - boss.y;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len; dy /= len;
+
+        bossProjectiles.push({
+          x: boss.x, y: boss.y,
+          vx: dx * (3.5 + boss.phase),
+          vy: dy * (3.5 + boss.phase),
+          radius: 8 + boss.phase * 2,
+          life: 1
+        });
+      }
+
+      for (let i = bossProjectiles.length - 1; i >= 0; i--) {
+        const p = bossProjectiles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.007;
+
+        if (p.life <= 0 || p.x < -50 || p.x > width + 50 || p.y < -50 || p.y > height + 50) {
+          bossProjectiles.splice(i, 1);
+          continue;
+        }
+
+        if (shieldActive && currentHands[0]) {
+          const palm = mapToCanvas(currentHands[0][0]);
+          if (Math.hypot(p.x - palm.x, p.y - palm.y) < 90) {
+            createExplosion(p.x, p.y, "#ffffff");
+            bossProjectiles.splice(i, 1);
+            addScore(20);
+          }
+        }
+      }
+
+      if (boss.hp <= 0) {
+        createExplosion(boss.x, boss.y, "#ffffff");
+        createShockwave({ x: boss.x, y: boss.y }, modeColor(time, 0, 1, 18), 420);
+        triggerBoom();
+        triggerBass(1.6);
+        aiMessage("BOSS DEFEATED");
+        addScore(1000);
+        disableBossMode();
+      }
+
+      const hpPct = Math.max(0, boss.hp / boss.maxHp);
+      bossBar.style.width = (hpPct * 100) + "%";
+      uiBossHp.innerText = Math.round(hpPct * 100) + "%";
+    }
+
+    function drawBoss() {
+      if (!bossMode || !boss) return;
+
+      fxCtx.save();
+      fxCtx.translate(boss.x, boss.y);
+      fxCtx.rotate(time * 0.8);
+
+      const coreColor = modeColor(time, 0, 1, 16, "Boss Battle");
+
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, boss.radius, 0, Math.PI * 2);
+      fxCtx.strokeStyle = coreColor;
+      fxCtx.lineWidth = 3;
+      fxCtx.stroke();
+
+      fxCtx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (Math.PI * 2 * i) / 8;
+        fxCtx.moveTo(Math.cos(a) * (boss.radius - 14), Math.sin(a) * (boss.radius - 14));
+        fxCtx.lineTo(Math.cos(a) * (boss.radius + 16), Math.sin(a) * (boss.radius + 16));
+      }
+      fxCtx.stroke();
+
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, 14 + Math.sin(boss.pulse) * 4, 0, Math.PI * 2);
+      fxCtx.fillStyle = "#ffffff";
+      fxCtx.fill();
+
+      fxCtx.restore();
+
+      for (const p of bossProjectiles) {
+        const grad = fxCtx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 2.5);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.4, "rgba(255,61,127,0.95)");
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        fxCtx.beginPath();
+        fxCtx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        fxCtx.fillStyle = grad;
+        fxCtx.globalAlpha = 0.9;
+        fxCtx.fill();
+      }
+      fxCtx.globalAlpha = 1;
+    }
+
+    // ==============================
+    // PROJECTILES / TARGETS
+    // ==============================
+    function fireProjectile(origin, target, power = 0.3, handIndex = 0) {
+      const spell = getActiveSpell();
+      let dx = 0, dy = -1;
+
+      if (target) {
+        dx = target.x - origin.x;
+        dy = target.y - origin.y;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len; dy /= len;
+      }
+
+      const speed = 10 + power * 14;
+      const color = modeColor(time, handIndex + 1, 5, 14);
+
+      if (spell === "Shield") {
+        shieldActive = true;
+        uiShield.innerText = "ON";
+        createEnergyRing(origin, color, 35 + power * 25);
+        createShockwave(origin, color, 180);
+        createParticles(origin, color, 30, 10);
+        triggerShimmer();
+        aiMessage("SHIELD DEPLOYED");
+        setTimeout(() => {
+          shieldActive = false;
+          uiShield.innerText = "OFF";
+        }, 1300 + power * 900);
+        return;
+      }
+
+      projectiles.push({
+        x: origin.x, y: origin.y,
+        vx: dx * speed,
+        vy: dy * speed,
+        life: 1,
+        power,
+        spell,
+        color,
+        radius: 8 + power * 10,
+        handIndex
+      });
+
+      if (spell === "Pulse") triggerZap();
+      else if (spell === "Lightning") { triggerZap(); triggerShimmer(); }
+      else if (spell === "Nova") triggerBass(power);
+      else if (spell === "Beam") { triggerZap(); triggerBass(0.4); }
+
+      createParticles(origin, color, 10 + Math.round(power * 10), 8 + power * 5);
+      createShards(origin, "#ffffff", 6);
+      kickShake(4 + power * 4);
+      screenFlash(0.2 + power * 0.25);
+    }
+
+    function updateProjectiles() {
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.life -= 0.015;
+
+        createTrail({ x: p.x, y: p.y }, p.color);
+        if (p.spell === "Nova" && Math.random() > 0.7) createParticles({ x: p.x, y: p.y }, "#ffffff", 2, 4);
+
+        if (p.x < -100 || p.x > width + 100 || p.y < -100 || p.y > height + 100 || p.life <= 0) {
+          projectiles.splice(i, 1);
+          continue;
+        }
+
+        let hit = false;
+
+        for (let j = drones.length - 1; j >= 0; j--) {
+          const d = drones[j];
+          const dist = Math.hypot(p.x - d.x, p.y - d.y);
+          if (dist < p.radius + d.radius) {
+            d.hp -= p.spell === "Nova" ? 2 : 1;
+            hit = true;
+            createExplosion(d.x, d.y, p.color);
+            createParticles({ x: d.x, y: d.y }, p.color, 16, 10);
+            createShards({ x: d.x, y: d.y }, "#ffffff", 12);
+            triggerHitTone();
+            kickShake(6);
+            screenFlash(0.25);
+
+            if (d.hp <= 0) {
+              drones.splice(j, 1);
+              addScore(100);
+              aiMessage("TARGET DESTROYED");
+            } else {
+              addScore(30);
+              aiMessage("DIRECT HIT");
+            }
+            break;
+          }
+        }
+
+        if (!hit && bossMode && boss) {
+          const distBoss = Math.hypot(p.x - boss.x, p.y - boss.y);
+          if (distBoss < p.radius + boss.radius) {
+            boss.hp -= p.spell === "Nova" ? 4 : p.spell === "Beam" ? 2 : 1.5;
+            hit = true;
+            createExplosion(p.x, p.y, p.color);
+            triggerHitTone();
+            addScore(80);
+            aiMessage("BOSS HIT");
+          }
+        }
+
+        if (hit) projectiles.splice(i, 1);
+      }
+    }
+
+    function updateDrones() {
+      if (bossMode) {
+        uiDrones.innerText = drones.length;
+        return;
+      }
+
+      for (let i = drones.length - 1; i >= 0; i--) {
+        const d = drones[i];
+        d.x += d.vx;
+        d.y += d.vy;
+        d.pulse += 0.06;
+        if (d.x < d.radius || d.x > width - d.radius) d.vx *= -1;
+        if (d.y < d.radius || d.y > height * 0.72) d.vy *= -1;
+      }
+
+      if (drones.length < 6) spawnDrones(6);
+      uiDrones.innerText = drones.length;
+    }
+
+    function drawDrones() {
+      for (const d of drones) {
+        const color = d.hp > 1 ? "rgba(255,80,140,0.95)" : "rgba(255,220,80,0.95)";
+        fxCtx.save();
+        fxCtx.translate(d.x, d.y);
+        fxCtx.rotate(time + d.pulse);
+
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, d.radius, 0, Math.PI * 2);
+        fxCtx.strokeStyle = color;
+        fxCtx.lineWidth = 2;
+        fxCtx.stroke();
+
+        fxCtx.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const a = (Math.PI * 2 * i) / 4;
+          fxCtx.moveTo(Math.cos(a) * (d.radius - 6), Math.sin(a) * (d.radius - 6));
+          fxCtx.lineTo(Math.cos(a) * (d.radius + 8), Math.sin(a) * (d.radius + 8));
+        }
+        fxCtx.stroke();
+
+        fxCtx.beginPath();
+        fxCtx.arc(0, 0, 4 + Math.sin(d.pulse * 3) * 1.5, 0, Math.PI * 2);
+        fxCtx.fillStyle = "#ffffff";
+        fxCtx.fill();
+
+        fxCtx.restore();
+      }
+    }
+
+    function drawProjectiles() {
+      for (const p of projectiles) {
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 2.5);
+        grad.addColorStop(0, "#ffffff");
+        grad.addColorStop(0.3, p.color);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = 0.85;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    function updateTargetHud() {
+      if (!currentHands.length) {
+        uiTarget.innerText = "None";
+        crosshairText.innerText = "NO TARGET";
+        return;
+      }
+
+      const p = mapToCanvas(currentHands[0][8]);
+      const target = getNearestDrone(p);
+
+      if (!target) {
+        uiTarget.innerText = "None";
+        crosshairText.innerText = "NO TARGET";
+        return;
+      }
+
+      const dist = Math.round(Math.hypot(target.x - p.x, target.y - p.y));
+      const label = target === boss ? "BOSS" : `D-${target.id.slice(-3)}`;
+      uiTarget.innerText = `${label} ${dist}`;
+      crosshairText.innerText = `${label}\n${dist}`;
+    }
+
+    // ==============================
+    // VOICE COMMANDS
+    // ==============================
+    function initVoice() {
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SR) {
+        uiVoice.innerText = "UNSUPPORTED";
+        return;
+      }
+
+      recognition = new SR();
+      recognition.lang = "en-US";
+      recognition.continuous = true;
+      recognition.interimResults = false;
+
+      recognition.onstart = () => {
+        voiceEnabled = true;
+        uiVoice.innerText = "ON";
+      };
+
+      recognition.onend = () => {
+        voiceEnabled = false;
+        uiVoice.innerText = "OFF";
+      };
+
+      recognition.onerror = () => {
+        voiceEnabled = false;
+        uiVoice.innerText = "ERR";
+      };
+
+      recognition.onresult = (event) => {
+        const last = event.results[event.results.length - 1];
+        const text = last[0].transcript.toLowerCase().trim();
+        handleVoiceCommand(text);
+      };
+
+      try {
+        recognition.start();
+      } catch (e) {
+        console.warn("Voice start failed", e);
+      }
+    }
+
+    function handleVoiceCommand(text) {
+      aiMessage(`VOICE: ${text}`);
+
+      if (text.includes("boss mode") || text.includes("boss battle")) {
+        setMode("Boss Battle");
+        enableBossMode();
+        return;
+      }
+      if (text.includes("shield")) {
+        spellIndex = spells.indexOf("Shield");
+        uiSpell.innerText = getActiveSpell();
+        return;
+      }
+      if (text.includes("lightning")) {
+        spellIndex = spells.indexOf("Lightning");
+        uiSpell.innerText = getActiveSpell();
+        return;
+      }
+      if (text.includes("nova")) {
+        spellIndex = spells.indexOf("Nova");
+        uiSpell.innerText = getActiveSpell();
+        return;
+      }
+      if (text.includes("beam")) {
+        spellIndex = spells.indexOf("Beam");
+        uiSpell.innerText = getActiveSpell();
+        return;
+      }
+      if (text.includes("pulse")) {
+        spellIndex = spells.indexOf("Pulse");
+        uiSpell.innerText = getActiveSpell();
+        return;
+      }
+      if (text.includes("clear screen")) {
+        particles = [];
+        trails = [];
+        shards = [];
+        ripples = [];
+        rings = [];
+        return;
+      }
+      if (text.includes("boot")) {
+        aiMessage("SYSTEM STABLE");
+        return;
+      }
+
+      // Mode switching
+      for (const mode of MODES) {
+        if (text.includes(mode.name.toLowerCase())) {
+          setMode(mode.name);
+          return;
+        }
+      }
+    }
+
+    // ==============================
+    // GESTURES / ACTIONS
+    // ==============================
+    function triggerPinchEffects(midpoint, color, indexTip, power = 0.3) {
+      createShockwave(midpoint, color, 160 + power * 140);
+      createParticles(midpoint, color, 10 + Math.round(power * 16), 10 + power * 10);
+      createShards(midpoint, "#ffffff", 8 + Math.round(power * 8));
+      createEnergyRing(midpoint, color, 24 + power * 14);
+      createEnergyRing(midpoint, "#ffffff", 16 + power * 10);
+      createParticles(indexTip, "#ffffff", 6 + Math.round(power * 8), 8);
+      triggerZap();
+      triggerBass(power);
+      kickShake(6 + power * 8);
+      screenFlash(0.45 + power * 0.25);
+    }
+
+    function doOpenHandBurst(hand) {
+      const p = mapToCanvas(hand[8]);
+      for (let i = 0; i < 10; i++) createParticles(p, "#ffffff", 3, 16);
+      createShockwave(p, modeColor(time, 1, 1, 12), 240);
+      createShards(p, modeColor(time, 2, 5, 10), 16);
+      triggerShimmer();
+      screenFlash(0.45);
+      aiMessage("ENERGY BLOOM");
+    }
+
+    function doFistReset(hand) {
+      const p = mapToCanvas(hand[0]);
+      particles = [];
+      trails = [];
+      createShockwave(p, "rgba(255,80,120,1)", 300);
+      createShards(p, "#ffffff", 20);
+      triggerBoom();
+      kickShake(12);
+      screenFlash(0.85);
+      aiMessage("RESET BLAST");
+    }
+
+    function detectGesturesAndActions() {
+      if (!currentHands.length) {
+        uiGesture.innerText = "None";
+        uiPower.innerText = "0%";
+        uiCharge.innerText = "0%";
+        shieldActive = false;
+        uiShield.innerText = "OFF";
+        return;
+      }
+
+      let gestureName = "ACTIVE";
+      const powerPct = clamp(Math.round((handVelocity * 1200) + (currentHands.length * 18) + ((1 - lastFusionDist) * 60)), 0, 100);
+      uiPower.innerText = powerPct + "%";
+      uiCharge.innerText = Math.max(chargePct[0], chargePct[1]).toFixed(0) + "%";
+
+      currentHands.forEach((hand, index) => {
+        updatePointerPath(hand, index);
+        detectSwipe(index);
+
+        const thumb = hand[4];
+        const indexTip = hand[8];
+        const pinkyTip = hand[20];
+
+        const pinchDist = getDist(thumb, indexTip);
+        const spread = getDist(indexTip, pinkyTip);
+        const spreadPct = Math.min(Math.round(spread * 300), 100);
+        const isPinching = pinchDist < 0.05;
+        const isTightPinch = pinchDist < 0.03;
+        const isOpen = spreadPct > 72;
+        const isFist = spreadPct < 22;
+
+        const tipCanvas = mapToCanvas(indexTip);
+
+        if (isTightPinch) createParticles(tipCanvas, "#ffffff", 5, 8);
+
+        const now = performance.now();
+
+        if (isPinching) {
+          if (!lastPinchState[index]) {
+            pinchStartTime[index] = now;
+            startSymbolStroke(tipCanvas);
+          }
+          chargePct[index] = clamp(((now - pinchStartTime[index]) / 1400) * 100, 0, 100);
+          gestureName = "CHARGING";
+          updateSymbolStroke(tipCanvas);
+        } else {
+          if (lastPinchState[index]) endSymbolStroke();
+          chargePct[index] = lerp(chargePct[index], 0, 0.3);
+        }
+
+        if (!isPinching && lastPinchState[index]) {
+          const heldMs = now - pinchStartTime[index];
+          const power = clamp(heldMs / 1400, 0.2, 1);
+          const origin = mapToCanvas(indexTip);
+          const target = getNearestDrone(origin);
+
+          triggerPinchEffects(origin, modeColor(time, index + 1, 5, 12), origin, power);
+          fireProjectile(origin, target, power, index);
+
+          gestureName = power > 0.75 ? "CHARGED" : "PINCH";
+          aiMessage(power > 0.75 ? "CHARGED SHOT" : "SPELL FIRED");
+        }
+
+        if (isOpen && now - lastOpenBurstTime > 900) {
+          doOpenHandBurst(hand);
+          lastOpenBurstTime = now;
+          gestureName = "OPEN";
+        }
+
+        if (isFist && now - lastFistTime > 900) {
+          doFistReset(hand);
+          lastFistTime = now;
+          gestureName = "FIST";
+        }
+
+        lastPinchState[index] = isPinching;
+      });
+
+      if (currentHands.length >= 2) {
+        const p1 = currentHands[0][8];
+        const p2 = currentHands[1][8];
+        lastFusionDist = clamp(getDist(p1, p2), 0, 1);
+
+        if (lastFusionDist < 0.18) {
+          gestureName = "FUSION";
+          const c1 = mapToCanvas(p1);
+          const c2 = mapToCanvas(p2);
+          const mid = { x: (c1.x + c2.x) / 2, y: (c1.y + c2.y) / 2 };
+          createParticles(mid, modeColor(time, 1, 1, 12), 2, 4);
+
+          if (Math.random() > 0.92) createEnergyRing(mid, "#ffffff", 18 + Math.random() * 12);
+        }
+      }
+
+      if (!lastPinchState.includes(true) && gestureName === "ACTIVE") {
+        const spread = getDist(currentHands[0][8], currentHands[0][20]);
+        const spreadPct = Math.min(Math.round(spread * 300), 100);
+        if (spreadPct > 60) gestureName = "OPEN";
+        else if (spreadPct < 28) gestureName = "FIST";
+      }
+
+      uiGesture.innerText = gestureName;
+      uiShield.innerText = shieldActive ? "ON" : "OFF";
+    }
+
+    // ==============================
+    // DRAWING
+    // ==============================
+    function drawSpellPortal(cx, cy, radius, color, rotationSpeed = 1) {
+      fxCtx.save();
+      fxCtx.translate(cx, cy);
+      fxCtx.rotate(time * rotationSpeed);
+
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, radius, 0, Math.PI * 2);
+      fxCtx.strokeStyle = color;
+      fxCtx.lineWidth = 1.8;
+      fxCtx.stroke();
+
+      fxCtx.beginPath();
+      for (let i = 0; i < 12; i++) {
+        const a = (Math.PI * 2 * i) / 12;
+        const x1 = Math.cos(a) * (radius - 12);
+        const y1 = Math.sin(a) * (radius - 12);
+        const x2 = Math.cos(a) * (radius + 12);
+        const y2 = Math.sin(a) * (radius + 12);
+        fxCtx.moveTo(x1, y1);
+        fxCtx.lineTo(x2, y2);
+      }
+      fxCtx.stroke();
+
+      fxCtx.restore();
+    }
+
+    function drawHudReticle(cx, cy, radius, color) {
+      fxCtx.save();
+      fxCtx.translate(cx, cy);
+      fxCtx.strokeStyle = color;
+      fxCtx.globalAlpha = 0.55;
+      fxCtx.lineWidth = 1.5;
+
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, radius, 0, Math.PI * 2);
+      fxCtx.stroke();
+
+      fxCtx.beginPath();
+      fxCtx.moveTo(-radius - 20, 0);
+      fxCtx.lineTo(-radius + 4, 0);
+      fxCtx.moveTo(radius - 4, 0);
+      fxCtx.lineTo(radius + 20, 0);
+      fxCtx.moveTo(0, -radius - 20);
+      fxCtx.lineTo(0, -radius + 4);
+      fxCtx.moveTo(0, radius - 4);
+      fxCtx.lineTo(0, radius + 20);
+      fxCtx.stroke();
+
+      fxCtx.restore();
+      fxCtx.globalAlpha = 1;
+    }
+
+    function drawPointerPaths() {
+      fxCtx.save();
+      fxCtx.lineWidth = 2;
+      for (let h = 0; h < pointerPaths.length; h++) {
+        const path = pointerPaths[h];
+        if (path.length < 2) continue;
+        fxCtx.beginPath();
+        fxCtx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) fxCtx.lineTo(path[i].x, path[i].y);
+        fxCtx.strokeStyle = modeColor(time, h, 2, 8);
+        fxCtx.globalAlpha = 0.15;
+        fxCtx.stroke();
+      }
+
+      if (symbolStroke.length > 1) {
+        fxCtx.beginPath();
+        fxCtx.moveTo(symbolStroke[0].x, symbolStroke[0].y);
+        for (let i = 1; i < symbolStroke.length; i++) fxCtx.lineTo(symbolStroke[i].x, symbolStroke[i].y);
+        fxCtx.strokeStyle = "#ffffff";
+        fxCtx.globalAlpha = 0.35;
+        fxCtx.lineWidth = 3;
+        fxCtx.stroke();
+      }
+
+      fxCtx.restore();
+      fxCtx.globalAlpha = 1;
+    }
+
+    function drawChargeOrb(origin, percent, color) {
+      const radius = 16 + percent * 0.28;
+      const grad = ctx.createRadialGradient(origin.x, origin.y, 0, origin.x, origin.y, radius * 2);
+      grad.addColorStop(0, "#ffffff");
+      grad.addColorStop(0.35, color);
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+
+      ctx.beginPath();
+      ctx.arc(origin.x, origin.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.globalAlpha = 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      fxCtx.beginPath();
+      fxCtx.arc(origin.x, origin.y, radius + 8, 0, Math.PI * 2);
+      fxCtx.strokeStyle = color;
+      fxCtx.globalAlpha = 0.4;
+      fxCtx.lineWidth = 2;
+      fxCtx.stroke();
+      fxCtx.globalAlpha = 1;
+    }
+
+    function drawBackground() {
+      bgCtx.globalCompositeOperation = "source-over";
+      bgCtx.fillStyle = `rgba(1, 3, 9, ${0.16 + Math.min(handVelocity * 7, 0.24)})`;
+      bgCtx.fillRect(0, 0, width, height);
+
+      const boost = clamp(handVelocity * 100, 0, 20);
+
+      for (const star of stars) {
+        star.y += star.speed + handVelocity * 20;
+        if (star.y > height + 8) {
+          star.y = -10;
+          star.x = Math.random() * width;
+        }
+
+        bgCtx.beginPath();
+        bgCtx.arc(star.x, star.y, star.size + handVelocity * 3, 0, Math.PI * 2);
+        bgCtx.fillStyle = modeColor(time, 1, 1, boost);
+        bgCtx.globalAlpha = star.alpha;
+        bgCtx.fill();
+      }
+
+      bgCtx.globalAlpha = 1;
+
+      bgCtx.save();
+      bgCtx.translate(width / 2, height / 2);
+      for (let i = 0; i < orbiters.length; i++) {
+        const o = orbiters[i];
+        const a = o.angle + time * o.speed;
+        const r = o.radius + Math.sin(time * 2 + i) * 12;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r * 0.4;
+        bgCtx.beginPath();
+        bgCtx.arc(x, y, o.size + handVelocity * 2, 0, Math.PI * 2);
+        bgCtx.fillStyle = modeColor(time, i, orbiters.length, boost);
+        bgCtx.globalAlpha = 0.15;
+        bgCtx.fill();
+      }
+      bgCtx.restore();
+      bgCtx.globalAlpha = 1;
+    }
+
+    function updateParticlesAndEffects() {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.07;
+        p.vx *= 0.992;
+        p.life -= 0.022;
+        if (p.life <= 0) { particles.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.globalAlpha = p.life;
+        ctx.fillStyle = p.color;
+        ctx.fill();
+      }
+
+      for (let i = shards.length - 1; i >= 0; i--) {
+        const s = shards[i];
+        s.x += Math.cos(s.angle) * s.speed;
+        s.y += Math.sin(s.angle) * s.speed;
+        s.speed *= 0.96;
+        s.life -= 0.03;
+        if (s.life <= 0) { shards.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x + Math.cos(s.angle) * s.len, s.y + Math.sin(s.angle) * s.len);
+        ctx.globalAlpha = s.life * 0.85;
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+        r.radius += (r.maxRadius - r.radius) * 0.12;
+        r.life -= 0.028;
+        if (r.life <= 0) { ripples.splice(i, 1); continue; }
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.globalAlpha = r.life;
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = 5 * r.life;
+        ctx.stroke();
+      }
+
+      for (let i = trails.length - 1; i >= 0; i--) {
+        const t = trails[i];
+        t.life -= 0.05;
+        if (t.life <= 0) { trails.splice(i, 1); continue; }
+        const grad = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, t.size * 2.2);
+        grad.addColorStop(0, t.color);
+        grad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.globalAlpha = t.life * 0.45;
+        ctx.beginPath();
+        ctx.fillStyle = grad;
+        ctx.arc(t.x, t.y, t.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let i = rings.length - 1; i >= 0; i--) {
+        const r = rings[i];
+        r.radius += 5;
+        r.life -= 0.035;
+        if (r.life <= 0) { rings.splice(i, 1); continue; }
+        fxCtx.beginPath();
+        fxCtx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        fxCtx.globalAlpha = r.life * 0.6;
+        fxCtx.strokeStyle = r.color;
+        fxCtx.lineWidth = 2.5;
+        fxCtx.stroke();
+      }
+
+      for (let i = explosions.length - 1; i >= 0; i--) {
+        const e = explosions[i];
+        e.radius += 6;
+        e.life -= 0.05;
+        if (e.life <= 0) { explosions.splice(i, 1); continue; }
+        fxCtx.beginPath();
+        fxCtx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+        fxCtx.globalAlpha = e.life * 0.5;
+        fxCtx.strokeStyle = e.color;
+        fxCtx.lineWidth = 3;
+        fxCtx.stroke();
+      }
+
+      ctx.globalAlpha = 1;
+      fxCtx.globalAlpha = 1;
+    }
+
+    function drawHandEffects() {
+      if (currentHands.length === 0) return;
+
+      const brightnessBoost = clamp(handVelocity * 260, 0, 20);
+
+      currentHands.forEach((hand, handIndex) => {
+        const glowColor = modeColor(time, handIndex, 2, brightnessBoost);
+
+        drawConnectors(ctx, hand, HAND_CONNECTIONS, {
+          color: glowColor,
+          lineWidth: 2.6
+        });
+
+        ctx.shadowBlur = 20 + handVelocity * 80;
+        ctx.shadowColor = glowColor;
+
+        FINGER_TIPS.forEach((tipIndex, idx) => {
+          const pt = mapToCanvas(hand[tipIndex]);
+          const tipColor = modeColor(time, idx, FINGER_TIPS.length, brightnessBoost);
+
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 5.5 + handVelocity * 6, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+
+          createTrail(pt, tipColor);
+          if (Math.random() > 0.25) createParticles(pt, tipColor, 2, 7 + handVelocity * 40);
+        });
+
+        ctx.shadowBlur = 0;
+
+        const palm = mapToCanvas(hand[0]);
+        drawHudReticle(palm.x, palm.y, 28 + Math.sin(time * 2 + handIndex) * 4, glowColor);
+
+        if (getDist(hand[8], hand[20]) > 0.24) {
+          drawSpellPortal(palm.x, palm.y, 34 + Math.sin(time * 4) * 3, glowColor, handIndex === 0 ? 0.9 : -0.9);
+        }
+
+        if (chargePct[handIndex] > 5) {
+          drawChargeOrb(mapToCanvas(hand[8]), chargePct[handIndex], glowColor);
+        }
+      });
+
+      if (currentHands.length >= 2) {
+        const h1 = currentHands[0];
+        const h2 = currentHands[1];
+        const p1 = mapToCanvas(h1[8]);
+        const p2 = mapToCanvas(h2[8]);
+
+        const cx = (p1.x + p2.x) / 2;
+        const cy = (p1.y + p2.y) / 2;
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const normalized = clamp(1 - dist / 320, 0, 1);
+
+        lastFusionDist = clamp(dist / 320, 0, 1);
+        energyPower = normalized;
+
+        const size = Math.max(24, 220 * normalized + Math.sin(time * 8) * 8);
+        const gradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, size);
+        gradient.addColorStop(0, "#ffffff");
+        gradient.addColorStop(0.2, modeColor(time, 1, 1, 18));
+        gradient.addColorStop(0.5, modeColor(time, 2, 5, 10));
+        gradient.addColorStop(1, "rgba(0,0,0,0)");
+
+        ctx.beginPath();
+        ctx.arc(cx, cy, size, 0, Math.PI * 2);
+        ctx.fillStyle = gradient;
+        ctx.globalAlpha = 0.78;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+
+        fxCtx.save();
+        fxCtx.globalAlpha = 0.3 + normalized * 0.45;
+        drawSpellPortal(cx, cy, size * 0.6 + 30, modeColor(time, 0, 1, 16), 1.1);
+        drawSpellPortal(cx, cy, size * 0.8 + 52, "rgba(255,255,255,0.4)", -0.7);
+        fxCtx.restore();
+        fxCtx.globalAlpha = 1;
+
+        if (Math.random() > 0.45) createParticles({ x: cx, y: cy }, modeColor(time, 1, 1, 12), 4, 6 + normalized * 8);
+        if (normalized > 0.7 && Math.random() > 0.8) createEnergyRing({ x: cx, y: cy }, "#ffffff", 18 + Math.random() * 18);
+
+        FINGER_TIPS.forEach((tipIndex, idx) => {
+          const pt1 = mapToCanvas(h1[tipIndex]);
+          const pt2 = mapToCanvas(h2[tipIndex]);
+          const fingerDist = Math.hypot(pt1.x - pt2.x, pt1.y - pt2.y);
+          const col = modeColor(time, idx, FINGER_TIPS.length, brightnessBoost);
+
+          if (fingerDist < 260) {
+            ctx.beginPath();
+            ctx.moveTo(pt1.x, pt1.y);
+            const segments = 3;
+            for (let s = 1; s < segments; s++) {
+              const tt = s / segments;
+              const x = lerp(pt1.x, pt2.x, tt) + (Math.random() - 0.5) * 40;
+              const y = lerp(pt1.y, pt2.y, tt) + (Math.random() - 0.5) * 40;
+              ctx.lineTo(x, y);
+            }
+            ctx.lineTo(pt2.x, pt2.y);
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 4 + Math.random() * 4;
+            ctx.shadowBlur = 24;
+            ctx.shadowColor = col;
+            ctx.stroke();
+          }
+
+          const grad = ctx.createLinearGradient(pt1.x, pt1.y, pt2.x, pt2.y);
+          grad.addColorStop(0, modeColor(time, idx, 5, brightnessBoost));
+          grad.addColorStop(0.5, modeColor(time, idx + 1, 5, brightnessBoost));
+          grad.addColorStop(1, modeColor(time, idx + 2, 5, brightnessBoost));
+
+          ctx.beginPath();
+          ctx.moveTo(pt1.x, pt1.y);
+          ctx.lineTo(pt2.x, pt2.y);
+          ctx.strokeStyle = grad;
+          ctx.lineWidth = 4;
+          ctx.shadowBlur = 16;
+          ctx.shadowColor = col;
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+        });
+
+        if (normalized > 0.74) aiMessage("FUSION CORE");
+      }
+
+      if (shieldActive && currentHands[0]) {
+        const palm = mapToCanvas(currentHands[0][0]);
+        fxCtx.beginPath();
+        fxCtx.arc(palm.x, palm.y, 90 + Math.sin(time * 8) * 8, 0, Math.PI * 2);
+        fxCtx.strokeStyle = modeColor(time, 0, 1, 16);
+        fxCtx.lineWidth = 3;
+        fxCtx.globalAlpha = 0.55;
+        fxCtx.stroke();
+        fxCtx.globalAlpha = 1;
+      }
+    }
+
+    function drawGlobalPortal() {
+      fxCtx.save();
+      fxCtx.translate(width / 2, height / 2);
+      fxCtx.rotate(time * 0.35);
+
+      const r1 = 120 + Math.sin(time * 1.4) * 10 + energyPower * 30;
+      const r2 = 190 + Math.cos(time * 1.2) * 12 + energyPower * 40;
+
+      fxCtx.globalAlpha = 0.12 + energyPower * 0.08;
+      fxCtx.beginPath();
+      fxCtx.arc(0, 0, r1, 0, Math.PI * 2);
+      fxCtx.strokeStyle = modeColor(time, 0, 1, 6);
+      fxCtx.lineWidth = 2;
+      fxCtx.stroke();
+
+      fxCtx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a = (Math.PI * 2 * i) / 10;
+        fxCtx.moveTo(Math.cos(a) * (r2 - 16), Math.sin(a) * (r2 - 16));
+        fxCtx.lineTo(Math.cos(a) * (r2 + 16), Math.sin(a) * (r2 + 16));
+      }
+      fxCtx.strokeStyle = "rgba(255,255,255,0.18)";
+      fxCtx.stroke();
+
+      fxCtx.restore();
+      fxCtx.globalAlpha = 1;
+    }
+
+    // ==============================
+    // HAND VELOCITY
+    // ==============================
+    function calculateHandVelocity(newHands) {
+      if (!previousHands.length || !newHands.length) {
+        handVelocity = 0;
+        return;
+      }
+
+      let total = 0;
+      let count = 0;
+      const compareHands = Math.min(previousHands.length, newHands.length);
+
+      for (let h = 0; h < compareHands; h++) {
+        for (let i of FINGER_TIPS) {
+          const oldP = previousHands[h][i];
+          const newP = newHands[h][i];
+          if (oldP && newP) {
+            total += getDist(oldP, newP);
+            count++;
+          }
+        }
+      }
+
+      const rawVelocity = count > 0 ? total / count : 0;
+      handVelocity = lerp(handVelocity, rawVelocity, 0.35);
+    }
+
+    // ==============================
+    // MEDIAPIPE
+    // ==============================
+    function initMediaPipe() {
+      const hands = new Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 0,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      hands.onResults((results) => {
+        const newHands = results.multiHandLandmarks || [];
+        uiHands.innerText = newHands.length;
+
+        calculateHandVelocity(newHands);
+        previousHands = currentHands.map(hand => hand.map(p => ({ ...p })));
+        currentHands = newHands;
+
+        updateAudio(currentHands);
+      });
+
+      const camera = new Camera(videoElement, {
+        onFrame: async () => {
+          try {
+            await hands.send({ image: videoElement });
+          } catch (err) {
+            console.error("MediaPipe send error:", err);
+          }
+        },
+        width: 640,
+        height: 480
+      });
+
+      camera.start();
+    }
+
+    // ==============================
+    // INIT
+    // ==============================
+    async function initSystem() {
+      resize();
+      makeStars();
+      spawnOrbiters();
+      spawnDrones(6);
+      renderModeButtons();
+
+      startOverlay.classList.add("hidden");
+      await runBootSequence();
+
+      hud.classList.remove("hidden-ui");
+      themesWrap.classList.remove("hidden-ui");
+      tips.classList.remove("hidden-ui");
+
+      initAudio();
+      initMediaPipe();
+      initVoice();
+
+      aiMessage("SYSTEM ONLINE");
+      requestAnimationFrame(renderLoop);
+    }
+
+    document.getElementById("startBtn").addEventListener("click", initSystem);
+
+    // ==============================
+    // RENDER LOOP
+    // ==============================
+    function renderLoop(timestamp) {
+      requestAnimationFrame(renderLoop);
+
+      const dt = (timestamp - lastTimestamp) / 1000;
+      lastTimestamp = timestamp;
+      time += dt;
+
+      frames++;
+      if (timestamp > lastFpsUpdate + 1000) {
+        uiFps.innerText = frames;
+        frames = 0;
+        lastFpsUpdate = timestamp;
+      }
+
+      drawBackground();
+
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.fillStyle = "rgba(0,0,0,0.14)";
+      ctx.fillRect(0, 0, width, height);
+
+      fxCtx.clearRect(0, 0, width, height);
+
+      ctx.globalCompositeOperation = "screen";
+      fxCtx.globalCompositeOperation = "screen";
+
+      updateParticlesAndEffects();
+      updateDrones();
+      updateProjectiles();
+      updateBoss(dt);
+
+      drawProjectiles();
+      drawHandEffects();
+      drawDrones();
+      drawBoss();
+      drawPointerPaths();
+      drawGlobalPortal();
+
+      detectGesturesAndActions();
+      updateTargetHud();
+
+      ctx.globalCompositeOperation = "source-over";
+      fxCtx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      fxCtx.globalAlpha = 1;
+
+      uiScore.innerText = score;
+      uiCombo.innerText = `x${combo}`;
+      uiSpell.innerText = getActiveSpell();
+
+      if (shakeAmount > 0.1) {
+        const x = (Math.random() - 0.5) * shakeAmount;
+        const y = (Math.random() - 0.5) * shakeAmount;
+        document.body.style.transform = `translate(${x}px, ${y}px)`;
+        shakeAmount *= 0.82;
+      } else {
+        shakeAmount = 0;
+        document.body.style.transform = "translate(0,0)";
+      }
+    }
+  </script>
+</body>
+</html>
